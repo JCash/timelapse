@@ -10,9 +10,8 @@ PLATFORM=`echo $PLATFORM | tr '[:upper:]' '[:lower:]'`
 set -e
 
 OPT="-O3 -g"
-OPT="-O0 -g"
 CXX="clang++"
-CCFLAGS="$OPT -DIMGUI_DISABLE_INCLUDE_IMCONFIG_H -I./src -I./external"
+CCFLAGS="$OPT -DIMGUI_DISABLE_INCLUDE_IMCONFIG_H -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -I./src -I./external"
 CXXFLAGS="-c"
 LDFLAGS=""
 BUILDDIR="./build"
@@ -47,7 +46,12 @@ else
     echo "$LIBRARYHELP already Exists!"
 fi
 
+OPT="-O0 -g"
+
+echo "Compiling app"
+
+$CXX $OPT $CXXFLAGS $CCFLAGS src/styles.cpp -o $BUILDDIR/styles.o
 $CXX $OPT $CXXFLAGS $CCFLAGS src/misc.cpp -o $BUILDDIR/misc.o
 $CXX $OPT $CXXFLAGS $CCFLAGS src/viewer.cpp -o $BUILDDIR/viewer.o
 
-$CXX $OPT $LDFLAGS $FRAMEWORKS -o $BUILDDIR/$TARGET -L$BUILDDIR -lhelp_$PLATFORM $BUILDDIR/viewer.o $BUILDDIR/misc.o
+$CXX $OPT $LDFLAGS $FRAMEWORKS -o $BUILDDIR/$TARGET -L$BUILDDIR -lhelp_$PLATFORM $BUILDDIR/viewer.o $BUILDDIR/misc.o $BUILDDIR/styles.o
