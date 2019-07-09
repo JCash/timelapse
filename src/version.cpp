@@ -1,16 +1,3 @@
-
-// const char* RE_COMMIT = "^commit\\s*([a-zA-Z0-9]*)$";
-// const char* RE_AUTHOR = "^Author:\\s*(.*)\\s<(.*)>$";
-// const char* RE_DATE = "^Date:\\s*(.*)$";
-
-
-// "commit\s*([a-zA-Z0-9]*)\nAuthor:\s(.*)\s<(.*)>";
-
-// "commit\s*([a-zA-Z0-9]*)\nAuthor:\s(.*)\s<(.*)>\nDate:\s*(.*)\n(.*)"
-
-// static uint8_t* get_file()
-
-
 #include <iostream>
 #include <stdexcept>
 #include <stdio.h>
@@ -121,7 +108,7 @@ RevisionCtx* get_revisions(const char* path) {
     ctx->revisions = 0;
     ctx->num_revisions = 0;
 
-#define COMSUME_LINE(P)                                 \
+#define CONSUME_LINE(P)                                 \
     {                                                   \
         char* lineend = strchr(P, '\n');                \
         if (lineend == 0) lineend = result+result_len;  \
@@ -129,7 +116,7 @@ RevisionCtx* get_revisions(const char* path) {
         current = (lineend+1) - result;                 \
     }
 
-#define COMSUME_SEGMENT(P, NEXTTAG)                     \
+#define CONSUME_SEGMENT(P, NEXTTAG)                     \
     {                                                   \
         char* segment_end = strstr(P, NEXTTAG);         \
         if (!segment_end)                               \
@@ -145,11 +132,14 @@ RevisionCtx* get_revisions(const char* path) {
 
         char* match = 0;
         if ((match = match_string("commit:", line))) {
-            COMSUME_LINE(match);
+            CONSUME_LINE(match);
 
             ctx->num_revisions++;
             ctx->revisions = (Revision*)realloc(ctx->revisions, ctx->num_revisions * sizeof(Revision));
-            revision = &ctx->revisions[ctx->num_revisions-1];
+            // Since the command gives them in reverse order, and we want them chronologically
+            memmove(ctx->revisions+1, ctx->revisions, (ctx->num_revisions-1) * sizeof(Revision));
+            revision = &ctx->revisions[0];
+
             memset(revision, 0, sizeof(Revision));
 
             *line = 0; // terminate the previous "chunks" section
@@ -157,28 +147,28 @@ RevisionCtx* get_revisions(const char* path) {
             revision->commit = match;
         }
         else if ((match = match_string("author:", line))) {
-            COMSUME_LINE(match);
+            CONSUME_LINE(match);
             //printf("MATCH: author: %s\n", match);
             revision->author = match;
         }
         else if ((match = match_string("email:", line))) {
-            COMSUME_LINE(match);
+            CONSUME_LINE(match);
             //printf("MATCH: email: %s\n", match);
             revision->email = match;
         }
         else if ((match = match_string("date:", line))) {
-            COMSUME_LINE(match);
+            CONSUME_LINE(match);
             //printf("MATCH: date: %s\n", match);
             revision->date = match;
         }
         else if ((match = match_string("body:", line))) {
             //printf("MATCH: body: %s\n", match);
             revision->body = match;
-            COMSUME_SEGMENT(match, "chunks:");
+            CONSUME_SEGMENT(match, "chunks:");
         }
         else if ((match = match_string("chunks:", line))) {
             //printf("MATCH: chunks: %s\n", match);
-            COMSUME_SEGMENT(match, "commit:");
+            CONSUME_SEGMENT(match, "commit:");
             char* chunks_end = result+current;
             parse_chunks(revision, match, chunks_end);
         }
