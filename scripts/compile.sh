@@ -14,6 +14,9 @@ CXX="clang++"
 CCFLAGS="$OPT -DIMGUI_DISABLE_INCLUDE_IMCONFIG_H -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -I./src -I./external"
 CXXFLAGS="-c"
 LDFLAGS=""
+ASAN="-fsanitize=address -fno-omit-frame-pointer -fsanitize-address-use-after-scope -fsanitize=undefined"
+ASAN_LDFLAGS="-fsanitize=address "
+
 BUILDDIR="./build"
 TARGET="timelapse"
 
@@ -50,8 +53,9 @@ OPT="-O0 -g"
 
 echo "Compiling app"
 
-$CXX $OPT $CXXFLAGS $CCFLAGS src/styles.cpp -o $BUILDDIR/styles.o
-$CXX $OPT $CXXFLAGS $CCFLAGS src/misc.cpp -o $BUILDDIR/misc.o
-$CXX $OPT $CXXFLAGS $CCFLAGS src/viewer.cpp -o $BUILDDIR/viewer.o
+$CXX $OPT $CXXFLAGS $CCFLAGS $ASAN src/styles.cpp -o $BUILDDIR/styles.o
+$CXX $OPT $CXXFLAGS $CCFLAGS $ASAN src/misc.cpp -o $BUILDDIR/misc.o
+$CXX $OPT $CXXFLAGS $CCFLAGS $ASAN src/viewer.cpp -o $BUILDDIR/viewer.o
+$CXX $OPT $CXXFLAGS $CCFLAGS $ASAN src/version.cpp -o $BUILDDIR/version.o
 
-$CXX $OPT $LDFLAGS $FRAMEWORKS -o $BUILDDIR/$TARGET -L$BUILDDIR -lhelp_$PLATFORM $BUILDDIR/viewer.o $BUILDDIR/misc.o $BUILDDIR/styles.o
+$CXX $OPT $LDFLAGS $ASAN_LDFLAGS $FRAMEWORKS -o $BUILDDIR/$TARGET -L$BUILDDIR -lhelp_$PLATFORM $BUILDDIR/viewer.o $BUILDDIR/misc.o $BUILDDIR/styles.o $BUILDDIR/version.o

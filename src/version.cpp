@@ -50,7 +50,7 @@ static char* parse_chunk_header(Chunk* chunk, const char* header) {
     header += 3;
     char* headerend = (char*)strchr(header, '@') - 1;
     *headerend = 0;
-    int num = sscanf(header, "-%d,%d +%d,%d", &chunk->before.start, &chunk->before.end, &chunk->after.start, &chunk->after.end);
+    int num = sscanf(header, "-%d,%d +%d,%d", &chunk->before.start, &chunk->before.length, &chunk->after.start, &chunk->after.length);
     assert(num == 4);
     return strchr(headerend+1, '\n') + 1;
 }
@@ -198,12 +198,124 @@ RevisionCtx* get_revisions(const char* path) {
     return ctx;
 }
 
-void free_revisions(RevisionCtx* ctx) {
-    for (int i = 0; i < ctx->num_revisions; ++i) {
-        free((void*)ctx->revisions[i].chunks);
+static void apply_chunk(File* file, Revision* revision, Chunk* chunk) {
+    int diff_newlines = chunk->after.length - chunk->before.length;
+
+
+//fprintf(stderr, "chunk:\t\t-%d,%d +%d,%d\n", chunk->before.start, chunk->before.length, chunk->after.start, chunk->after.length);
+
+    // Allocate new memory if needed
+    if ((file->num_lines + diff_newlines) >= file->max_lines) {
+        file->max_lines += diff_newlines > 32 ? diff_newlines : 32;
+
+        file->lines = (const char**)realloc(file->lines, sizeof(char**) * file->max_lines);
+        file->line_revisions = (const char**)realloc(file->line_revisions, sizeof(char**) * file->max_lines);
+
+        //fprintf(stderr, "allocated: %d\n", file->max_lines);
     }
-    free((void*)ctx->revisions);
-    free((void*)ctx->_internal);
+
+    const char* line = chunk->body;
+
+    // Copy the line pointers from the chunks
+    for (int i = 0; i < chunk->after.length; ++i) {
+        int index = chunk->after.start + i - 1; // the patch indices are 1 based
+        int remaining_lines = file->num_lines - index;
+
+// printf("IDX: %d\n", index);
+// printf("NUM BEFORE: %d\n", file->num_lines);
+
+        if (line[0] == '+') {
+            // move one step right
+            int num_to_copy = remaining_lines;
+
+            //printf("ADD: copy from idx:%d to idx:%d, %d elements (num elements: %d  max elements: %d)\n", index, index+1, num_to_copy, file->num_lines, file->max_lines);
+
+            if (num_to_copy+1 > 0) {
+                memmove(file->lines+index+1, file->lines+index, num_to_copy * sizeof(char**));
+                memmove(file->line_revisions+index+1, file->line_revisions+index, num_to_copy * sizeof(char**));
+            }
+
+// if (line[1] != '\n')
+//     printf("ADD: %d: %c%c%c%c%c (copied %d)\n", index, line[0], line[1], line[2], line[3], line[4], num_to_copy);
+// else
+//     printf("ADD: %d: %c (copied %d)\n", index, line[0], num_to_copy);
+
+            file->lines[index] = line + 1;
+            file->line_revisions[index] = revision->commit;
+            file->num_lines++;
+        }
+        else if (line[0] == '-') {
+            // move one step left
+            int num_to_copy = remaining_lines-1;
+            memmove(file->lines+index, file->lines+index+1, num_to_copy * sizeof(char**));
+            memmove(file->line_revisions+index, file->line_revisions+index+1, num_to_copy * sizeof(char**));
+            file->num_lines--;
+            --i;
+
+// if (line[1] != '\n')
+//     printf("REM: %d: %c%c%c%c%c (copied %d)\n", index, line[0], line[1], line[2], line[3], line[4], num_to_copy);
+// else
+//     printf("REM: %d: %c (copied %d)\n", index, line[0], num_to_copy);
+
+        }
+        else if (line[0] == '\\') {
+            // discard the "\ No newline at end of file"
+            --i; // step back to previous
+        } // else { ' ' }
+
+// printf("NUM AFTER: %d\n", file->num_lines);
+
+        line = strchr(line, '\n') + 1;
+    }
+}
+
+File* get_file_from_revision(RevisionCtx* ctx, int revisionnumber) {
+    if (revisionnumber == -1 || revisionnumber >= ctx->num_revisions)
+        revisionnumber = ctx->num_revisions;
+    else if (revisionnumber == 0)
+        revisionnumber = 1;
+
+    File* file = (File*)malloc(sizeof(File));
+    memset(file, 0, sizeof(File));
+
+    for (int i = 0; i < revisionnumber; ++i) {
+        Revision* revision = &ctx->revisions[i];
+        for (int c = 0; c < revision->num_chunks; ++c) {
+            apply_chunk(file, revision, &revision->chunks[c]);
+        }
+    }
+
+    // printf("POINTERS:\n");
+    // for (int i = 0; i < file->num_lines; ++i) {
+    //     const char* line = file->lines[i];
+    //     printf("%02d - %p : ", i, line);
+    //     while (line && line[0] != '\n') {
+    //         printf("%c", line[0]);
+    //         line++;
+    //     }
+    //     printf("\n");
+    // }
+    // printf("\n");
+
+    return file;
+}
+
+void free_file(File* file) {
+    if (file) {
+        free((void*)file->lines);
+        free((void*)file->line_revisions);
+    }
+    free((void*)file);
+}
+
+void free_revisions(RevisionCtx* ctx) {
+    if (ctx) {
+        for (int i = 0; i < ctx->num_revisions; ++i) {
+            free((void*)ctx->revisions[i].chunks);
+        }
+        free((void*)ctx->revisions);
+        free((void*)ctx->_internal);
+    }
     free((void*)ctx);
 }
 

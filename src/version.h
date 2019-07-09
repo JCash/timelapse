@@ -1,7 +1,7 @@
 #pragma once
 
 struct Range {
-    int start, end;
+    int start, length;
 };
 
 struct Chunk {
@@ -20,6 +20,13 @@ struct Revision {
     int num_chunks;
 };
 
+struct File {
+    const char** line_revisions;
+    const char** lines;
+    int num_lines;
+    int max_lines;
+};
+
 struct RevisionCtx {
     void* _internal;
     Revision* revisions;
@@ -34,3 +41,7 @@ void free_revisions(RevisionCtx* ctx);
 
 // Finds the latest revision that a line number corresponds to
 Revision* get_revision_from_line(RevisionCtx* ctx, int line);
+
+
+File* get_file_from_revision(RevisionCtx* ctx, int revision);
+void free_file(File* file);
