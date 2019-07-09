@@ -34,6 +34,17 @@ static char* run_cmd(const char* cmd, int* outlen) {
     return output;
 }
 
+static char* find_line_start(char* s, const char* pattern) {
+    char* result = strstr(s, pattern);
+    while (result) {
+        if (*(result-1) == '\n') {
+            break; // It has to be at the start of a line!
+        }
+        result = strstr(result+1, pattern);
+    }
+    return result;
+}
+
 // E.g.: "@@ -26,7 +26,12 @@ void function_name() {"
 static char* parse_chunk_header(Chunk* chunk, const char* header) {
     header += 3;
@@ -67,10 +78,11 @@ static void parse_chunks(Revision* revision, const char* sectionstart, const cha
         chunk->body = chunkstart;
 
         // Find the next chunk from our command (or 0 if it was the last chunk)
-        char* chunkend = strstr(chunkstart, "@@");
+        char* chunkend = find_line_start(chunkstart, "@@");
         if (!chunkend) {
             break;
         }
+        chunkstart = chunkend;
     }
 }
 
@@ -83,7 +95,7 @@ static char* match_string(const char* pattern, char* s) {
 
 // git log --pretty=format:"commit:%h%nauthor:%an%ndate:%ad%nemail:%ae%nbody:%B%n"
 // git log -p --format=format:"commit:%h%nauthor:%an%ndate:%ad%nemail:%ae%nbody:%B%nchunks:"
-const char CMD_GET_REVISIONS_FMT[] = "git log -p --format=format:\"commit:%%h%%nauthor:%%an%%ndate:%%ad%%nemail:%%ae%%nbody:%%B%%nchunks:\" %s";
+const char CMD_GET_REVISIONS_FMT[] = "git log -p --format=format:\"timelapse_header:%%ncommit:%%h%%nauthor:%%an%%ndate:%%ad%%nemail:%%ae%%nbody:%%B%%nchunks:\" %s";
 
 RevisionCtx* get_revisions(const char* path) {
 
@@ -103,6 +115,8 @@ RevisionCtx* get_revisions(const char* path) {
         return 0;
     }
 
+    //printf("RESULT:\n%s", result);
+
     RevisionCtx* ctx = (RevisionCtx*)malloc(sizeof(RevisionCtx));
     ctx->_internal = result;
     ctx->revisions = 0;
@@ -118,7 +132,7 @@ RevisionCtx* get_revisions(const char* path) {
 
 #define CONSUME_SEGMENT(P, NEXTTAG)                     \
     {                                                   \
-        char* segment_end = strstr(P, NEXTTAG);         \
+        char* segment_end = find_line_start(P, NEXTTAG);\
         if (!segment_end)                               \
             segment_end = result + result_len;          \
         current = segment_end - result;                 \
@@ -130,8 +144,14 @@ RevisionCtx* get_revisions(const char* path) {
     while (current < result_len) {
         char* line = &result[current];
 
+        // char buffer[20];
+        // memcpy(buffer, line, sizeof(buffer)-1);
+        // buffer[sizeof(buffer)-1] = 0;
+        // printf("LINE: %s\n", buffer);
+
         char* match = 0;
-        if ((match = match_string("commit:", line))) {
+
+        if ((match = match_string("timelapse_header:", line))) {
             CONSUME_LINE(match);
 
             ctx->num_revisions++;
@@ -141,8 +161,9 @@ RevisionCtx* get_revisions(const char* path) {
             revision = &ctx->revisions[0];
 
             memset(revision, 0, sizeof(Revision));
-
-            *line = 0; // terminate the previous "chunks" section
+        }
+        else if ((match = match_string("commit:", line))) {
+            CONSUME_LINE(match);
             //printf("MATCH: commit: %s\n", match);
             revision->commit = match;
         }
@@ -168,7 +189,7 @@ RevisionCtx* get_revisions(const char* path) {
         }
         else if ((match = match_string("chunks:", line))) {
             //printf("MATCH: chunks: %s\n", match);
-            CONSUME_SEGMENT(match, "commit:");
+            CONSUME_SEGMENT(match, "timelapse_header:");
             char* chunks_end = result+current;
             parse_chunks(revision, match, chunks_end);
         }
