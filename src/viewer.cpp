@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <sokol/sokol_app.h>
 #include <sokol/sokol_gfx.h>
@@ -532,8 +533,27 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     }
 
     memset(&g_FileContext, 0, sizeof(g_FileContext));
-    if (path)
+    if (path) {
+        char* directory_end = (char*)strrchr(path, '/');
+        if (!directory_end)
+            directory_end = (char*)strrchr(path, '\\');
+
+        char oldcwd[2048];
+        if (directory_end) {
+            char separator = *directory_end;
+            *directory_end = 0;
+            getcwd(oldcwd, sizeof(oldcwd));
+            chdir(path);
+
+            path = directory_end + 1;
+        }
+
         load_file(path);
+
+        if (directory_end) {
+            chdir(oldcwd);
+        }
+    }
 
     return desc;
 }
