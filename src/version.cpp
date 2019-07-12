@@ -49,7 +49,6 @@ static char* find_line_start(char* s, const char* pattern) {
 static char* parse_chunk_header(Chunk* chunk, const char* header) {
     header += 3;
     char* headerend = (char*)strchr(header, '@') - 1;
-    *headerend = 0;
     int num = sscanf(header, "-%d,%d +%d,%d", &chunk->before.start, &chunk->before.length, &chunk->after.start, &chunk->after.length);
     assert(num == 4);
     return strchr(headerend+1, '\n') + 1;

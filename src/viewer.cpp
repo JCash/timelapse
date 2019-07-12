@@ -26,6 +26,11 @@ struct FileContext {
     const char* path;
 } g_FileContext;
 
+static const int COMMAND_NOP = 0;
+static const int COMMAND_NEXT_CHUNK = 1;
+static const int COMMAND_PREV_CHUNK = 2;
+static const int COMMAND_NEXT_REVISION = 3;
+static const int COMMAND_PREV_REVISION = 4;
 
 struct Context {
     Settings settings;
@@ -33,6 +38,7 @@ struct Context {
     ImFont* font_regular;
     ImFont* font_bold;
     sg_image font_atlas;
+    int input_command;
 } g_Context;
 
 
@@ -119,6 +125,32 @@ static void update_revision() {
         g_FileContext.file = get_file_from_revision(g_FileContext.ctx, g_FileContext.current_revision+1);
         g_FileContext.prev_revision = g_FileContext.current_revision;
     }
+}
+
+// Get the liune start of the previous chunk
+static int get_prev_chunk_from_line(int line) {
+    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
+    for (int i = revision->num_chunks-1; i >= 0; --i) {
+        Chunk* chunk = &revision->chunks[i];
+        if (chunk->after.start < line) {
+            return chunk->after.start;
+        }
+    }
+    return 0;
+}
+
+// Get the liune start of the next chunk
+static int get_next_chunk_from_line(int line) {
+    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
+    const File* file = g_FileContext.file;
+    for (int i = 0; i < revision->num_chunks; ++i) {
+        Chunk* chunk = &revision->chunks[i];
+        if (chunk->after.start > line) {
+            return chunk->after.start;
+        }
+    }
+
+    return file->num_lines;
 }
 
 static void imgui_show_controls() {
@@ -234,6 +266,18 @@ static void imgui_show_main_file() {
     }
 
     ImGui::EndGroup();
+
+    if (g_Context.input_command) {
+        int current_line = ImGui::GetScrollY() / ImGui::GetTextLineHeightWithSpacing();
+
+        switch(g_Context.input_command) {
+        case COMMAND_PREV_CHUNK: ImGui::SetScrollY(ImGui::GetTextLineHeightWithSpacing() * get_prev_chunk_from_line(current_line)); break;
+        case COMMAND_NEXT_CHUNK: ImGui::SetScrollY(ImGui::GetTextLineHeightWithSpacing() * get_next_chunk_from_line(current_line)); break;
+        case COMMAND_PREV_REVISION: g_FileContext.current_revision--; if (g_FileContext.current_revision < 0) g_FileContext.current_revision = 0; break;
+        case COMMAND_NEXT_REVISION: g_FileContext.current_revision++; if (g_FileContext.current_revision >= g_FileContext.ctx->num_revisions) g_FileContext.current_revision = g_FileContext.ctx->num_revisions-1; break;
+        }
+    }
+    g_Context.input_command = COMMAND_NOP;
 }
 
 static const char* get_line(const char** cursor, const char* end) {
@@ -286,7 +330,6 @@ static void imgui_show_revision(int w, int h) {
     int bottom_window_height = ImGui::GetTextLineHeightWithSpacing() * 6;
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    //ImGui::SetNextWindowSize(ImVec2(w, top_window_height));
     ImGui::SetNextWindowSize(ImVec2(w, h - bottom_window_height));
     ImGui::Begin("Controls", 0, win_flags);
 
@@ -372,6 +415,14 @@ static void on_app_event(const sapp_event* event) {
     if (event->type == SAPP_EVENTTYPE_KEY_DOWN) {
         if (event->key_code == SAPP_KEYCODE_ESCAPE) {
             sapp_quit();
+        }
+
+        switch (event->key_code) {
+        case SAPP_KEYCODE_UP:   g_Context.input_command = COMMAND_PREV_CHUNK; break;
+        case SAPP_KEYCODE_DOWN: g_Context.input_command = COMMAND_NEXT_CHUNK; break;
+        case SAPP_KEYCODE_LEFT: g_Context.input_command = COMMAND_PREV_REVISION; break;
+        case SAPP_KEYCODE_RIGHT:g_Context.input_command = COMMAND_NEXT_REVISION; break;
+        default:                g_Context.input_command = COMMAND_NOP;
         }
     }
     else if(event->type == SAPP_EVENTTYPE_RESIZED) {
