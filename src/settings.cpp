@@ -39,14 +39,14 @@ static const char* settings_read_property(ini_t* ini, const char* section, const
     int isection = ini_find_section(ini, section, strlen(section));
     int iproperty = ini_find_property(ini, isection, property, strlen(property));
     char const* value = ini_property_value(ini, isection, iproperty);
-    return value ? strdup(value) : 0;
+    return (value && (value[0] != 0 && value[0] != '\n')) ? strdup(value) : 0;
 }
 
 static float settings_read_float_property(ini_t* ini, const char* section, const char* property, float defaultvalue) {
     int isection = ini_find_section(ini, section, strlen(section));
     int iproperty = ini_find_property(ini, isection, property, strlen(property));
     char const* value = ini_property_value(ini, isection, iproperty);
-    if (value) {
+    if (value && (value[0] != 0 && value[0] != '\n')) {
         float fvalue = atof(value);
         return fvalue;
     }
@@ -66,7 +66,6 @@ void settings_read(const char* path, Settings* s) {
 
     s->fontpath_regular = settings_read_property(ini, "fonts", "regular");
     s->fontpath_bold = settings_read_property(ini, "fonts", "bold");
-
     s->fontsize = settings_read_float_property(ini, "fonts", "size", s->fontsize);
     s->fontweight = settings_read_float_property(ini, "fonts", "weight", s->fontweight);
 
@@ -100,7 +99,10 @@ void settings_write(const char* path, Settings* s) {
     size = ini_save(ini, data, size); // Actually save the file
     ini_destroy(ini);
 
-    FILE* fp = fopen(path, "wb");
+    while(data[size-1] == 0)
+        size--;
+
+    FILE* fp = fopen(path, "w");
     if (fp) {
         fwrite(data, 1, size, fp);
         fclose(fp);
