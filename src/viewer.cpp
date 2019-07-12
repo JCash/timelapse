@@ -37,7 +37,6 @@ struct Context {
 
 
 
-
 static void update_font_texture() {
     ImGuiIO& io = ImGui::GetIO();
 
@@ -114,6 +113,216 @@ static void on_app_init(void) {
     //ImGui::StyleColorsLight(&ImGui::GetStyle());
 }
 
+static void update_revision() {
+    if (g_FileContext.current_revision != g_FileContext.prev_revision) {
+        free_file(g_FileContext.file);
+        g_FileContext.file = get_file_from_revision(g_FileContext.ctx, g_FileContext.current_revision+1);
+        g_FileContext.prev_revision = g_FileContext.current_revision;
+    }
+}
+
+static void imgui_show_controls() {
+    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
+
+    ImGui::Text("File: %s", g_FileContext.path);
+    ImGui::Text("Revision: %d / %d : %s", g_FileContext.current_revision+1, g_FileContext.ctx->num_revisions, revision->commit);
+    ImGui::SetNextItemWidth(-16);
+    ImGui::SliderInt("", &g_FileContext.current_revision, 0, g_FileContext.ctx->num_revisions-1, "");
+}
+
+static void imgui_show_main_file() {
+    ImGuiStyle* style = &ImGui::GetStyle();
+
+    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
+    const File* file = g_FileContext.file;
+
+    ImFont* font_regular = g_Context.font_regular;
+    ImFont* font_bold = g_Context.font_bold;
+
+    ImVec2 textsize;
+    textsize = ImGui::CalcTextSize("0");
+
+    int num_digits = 0;
+    int num_lines = file->num_lines;
+    while (num_lines > 0) {
+        num_digits++;
+        num_lines /= 10;
+    }
+    int number_column_width = textsize.x * num_digits + style->ItemSpacing.x * 2;
+
+    ImGui::BeginGroup();
+
+    ImGui::Columns(4);
+
+    ImGui::SetColumnWidth(0, 32);
+    ImGui::Text("%d", g_FileContext.current_revision);
+
+    ImGui::NextColumn();
+    ImGui::SetColumnWidth(1, 80);
+
+    ImVec4 colors[2] = {style->Colors[ImGuiCol_Text], ImVec4(0.5f,1.0f,0.5f,1.0f)};
+
+    const char* prev_revision = "";
+    for (int i = 0; i < file->num_lines; ++i) {
+        const char* line_revision = file->line_revisions[i];
+        if (prev_revision == line_revision)
+            line_revision = "";
+        prev_revision = file->line_revisions[i];
+
+        int highlight = 0;
+        if (strcmp(revision->commit, line_revision)==0) {
+            highlight = 1;
+            ImGui::PushFont(font_bold);
+        }
+
+        ImGui::TextColored(colors[highlight], "%7s", line_revision);
+
+        if (highlight) {
+            ImGui::PopFont();
+        }
+    }
+
+    // Line numbers
+    ImGui::NextColumn();
+    ImGui::SetColumnWidth(2, number_column_width);
+
+    for (int i = 0; i < file->num_lines; ++i) {
+        const char* line_revision = file->line_revisions[i];
+
+        int highlight = 0;
+        if (strcmp(revision->commit, line_revision)==0) {
+            highlight = 1;
+            ImGui::PushFont(font_bold);
+        }
+
+        ImGui::TextColored(colors[highlight], "%d", i);
+
+        if (highlight) {
+            ImGui::PopFont();
+        }
+    }
+
+    // The contents of the file
+    ImGui::NextColumn();
+
+    for (int i = 0; i < file->num_lines; ++i) {
+        const char* line_revision = file->line_revisions[i];
+        const char* line = file->lines[i];
+        const char* lineend = strchr(line, '\n');
+
+        char* buffer;
+        if (lineend) {
+            int size = lineend-line;
+            buffer = (char*)alloca(size+1);
+            memcpy(buffer, line, size);
+            buffer[size] = 0;
+        } else {
+            buffer = (char*)line;
+        }
+
+        int highlight = 0;
+        if (strcmp(revision->commit, line_revision)==0) {
+            highlight = 1;
+            ImGui::PushFont(font_bold);
+        }
+
+        ImGui::TextColored(colors[highlight], "%s", buffer);
+
+        if (highlight) {
+            ImGui::PopFont();
+        }
+    }
+
+    ImGui::EndGroup();
+}
+
+static const char* get_line(const char** cursor, const char* end) {
+    const char* c = *cursor;
+    const char* line = c;
+    while (c < end && !(*c == 0 || *c == '\n')) {
+        c++;
+    }
+    *cursor = ++c;
+    return line[0] != 0 ? line : 0;
+}
+
+static void imgui_show_chunks() {
+    ImGuiStyle* style = &ImGui::GetStyle();
+    ImVec4 colors[3] = {style->Colors[ImGuiCol_Text], ImVec4(0.5f,1.0f,0.5f,1.0f), ImVec4(1.0f,0.5f,0.5f,1.0f)};
+
+    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
+
+    const char* p = revision->chunk_begin;
+    const char* pend = revision->chunk_end;
+    while (p < pend) {
+        const char* line = get_line(&p, pend);
+        if (line) {
+            int size = p - line;
+            char* l = (char*)alloca(size + 1);
+            strncpy(l, line, size);
+            l[size] = 0;
+            int color = l[0] == '-' ? 2 : (l[0] == '+' ? 1 : 0);
+            ImGui::TextColored(colors[color], "%s", l);
+        }
+    }
+}
+
+static void imgui_show_details() {
+    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
+
+    ImGui::Text("Commit: %s\tDate: %s", revision->commit, revision->date);
+    ImGui::Text("Author: %s <%s>", revision->author, revision->email);
+    ImGui::Text("Body: %s", revision->body);
+}
+
+static void imgui_show_revision(int w, int h) {
+    int win_flags = ImGuiWindowFlags_NoResize |
+                    ImGuiWindowFlags_NoTitleBar |
+                    ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoCollapse;
+
+    int top_window_height = ImGui::GetTextLineHeightWithSpacing() * 4;
+
+    int bottom_window_height = ImGui::GetTextLineHeightWithSpacing() * 6;
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    //ImGui::SetNextWindowSize(ImVec2(w, top_window_height));
+    ImGui::SetNextWindowSize(ImVec2(w, h - bottom_window_height));
+    ImGui::Begin("Controls", 0, win_flags);
+
+        imgui_show_controls();
+
+        ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+        if (ImGui::BeginTabBar("MainTabs", tab_bar_flags))
+        {
+            if (ImGui::BeginTabItem("File"))
+            {
+                ImGui::BeginChild("FileView");
+                    imgui_show_main_file();
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Chunks"))
+            {
+                ImGui::BeginChild("ChunksView");
+                    imgui_show_chunks();
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+        }
+
+    ImGui::End();
+
+    ImGui::SetNextWindowPos(ImVec2(0, h - bottom_window_height));
+    ImGui::SetNextWindowSize(ImVec2(w, bottom_window_height));
+    ImGui::Begin("Details", 0, win_flags);
+
+        imgui_show_details();
+
+    ImGui::End();
+}
+
 
 static void on_app_frame(void) {
     int appw = sapp_width();
@@ -128,140 +337,11 @@ static void on_app_frame(void) {
     int w = appw / dpi;
     int h = apph / dpi;
 
-    int win_flags = ImGuiWindowFlags_NoResize |
-                    ImGuiWindowFlags_NoTitleBar |
-                    ImGuiWindowFlags_NoMove |
-                    ImGuiWindowFlags_NoCollapse;
+    update_revision();
 
-    ImFont* font = g_Context.font_regular;
-
-    int top_window_height = 80;
-    int bottom_window_height = 80;
-    int main_window_height = h - top_window_height - bottom_window_height;
-
-    const Revision* revision = g_FileContext.ctx == 0 ? 0 : &g_FileContext.ctx->revisions[g_FileContext.current_revision];
-    if (revision) {
-
-        if (g_FileContext.current_revision != g_FileContext.prev_revision) {
-            free_file(g_FileContext.file);
-            g_FileContext.file = get_file_from_revision(g_FileContext.ctx, g_FileContext.current_revision+1);
-            g_FileContext.prev_revision = g_FileContext.current_revision;
-        }
-        const File* file = g_FileContext.file;
-
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImVec2(w, top_window_height));
-        ImGui::Begin("Controls", 0, win_flags);
-
-            ImGui::Text("File: %s", g_FileContext.path);
-            ImGui::Text("Revision: %d / %d : %s", g_FileContext.current_revision+1, g_FileContext.ctx->num_revisions, revision->commit);
-            ImGui::SetNextItemWidth(-16);
-            ImGui::SliderInt("", &g_FileContext.current_revision, 0, g_FileContext.ctx->num_revisions-1, "");
-
-        ImGui::End();
-
-        ImGui::SetNextWindowPos(ImVec2(0, top_window_height));
-        ImGui::SetNextWindowSize(ImVec2(w, main_window_height));
-        ImGui::Begin("Main", 0, win_flags);
-
-        ImGui::BeginGroup();
-        ImGui::Columns(4);
-
-        ImGui::SetColumnWidth(0, 32);
-        ImGui::Text("%d", g_FileContext.current_revision);
-
-        ImGui::NextColumn();
-        ImGui::SetColumnWidth(1, 80);
-
-        ImGuiStyle* style = &ImGui::GetStyle();
-        ImVec4 colors[2] = {style->Colors[ImGuiCol_Text], ImVec4(0.5f,1.0f,0.5f,1.0f)};
-
-        const char* prev_revision = "";
-        for (int i = 0; i < file->num_lines; ++i) {
-            const char* line_revision = file->line_revisions[i];
-            if (prev_revision == line_revision)
-                line_revision = "";
-            prev_revision = file->line_revisions[i];
-
-            int highlight = 0;
-            if (strcmp(revision->commit, line_revision)==0) {
-                highlight = 1;
-                ImGui::PushFont(g_Context.font_bold);
-            }
-
-            ImGui::TextColored(colors[highlight], "%7s", line_revision);
-
-            if (highlight) {
-                ImGui::PopFont();
-            }
-        }
-
-        // Line numbers
-        ImGui::NextColumn();
-        ImGui::SetColumnWidth(2, 32);
-
-        for (int i = 0; i < file->num_lines; ++i) {
-            const char* line_revision = file->line_revisions[i];
-
-            int highlight = 0;
-            if (strcmp(revision->commit, line_revision)==0) {
-                highlight = 1;
-                ImGui::PushFont(g_Context.font_bold);
-            }
-
-            ImGui::TextColored(colors[highlight], "%d", i);
-
-            if (highlight) {
-                ImGui::PopFont();
-            }
-        }
-
-        // The contents of the file
-        ImGui::NextColumn();
-
-        for (int i = 0; i < file->num_lines; ++i) {
-            const char* line_revision = file->line_revisions[i];
-            const char* line = file->lines[i];
-            const char* lineend = strchr(line, '\n');
-
-            char* buffer;
-            if (lineend) {
-                int size = lineend-line;
-                buffer = (char*)alloca(size+1);
-                memcpy(buffer, line, size);
-                buffer[size] = 0;
-            } else {
-                buffer = (char*)line;
-            }
-
-            int highlight = 0;
-            if (strcmp(revision->commit, line_revision)==0) {
-                highlight = 1;
-                ImGui::PushFont(g_Context.font_bold);
-            }
-
-            ImGui::TextColored(colors[highlight], "%s", buffer);
-
-            if (highlight) {
-                ImGui::PopFont();
-            }
-        }
-
-        ImGui::EndGroup();
-
-        ImGui::End();
+    if (g_FileContext.ctx) {
+        imgui_show_revision(w, h);
     }
-
-    ImGui::SetNextWindowPos(ImVec2(0, top_window_height + main_window_height));
-    ImGui::SetNextWindowSize(ImVec2(w, bottom_window_height));
-    ImGui::Begin("Details", 0, win_flags);
-
-    //ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-    ImGui::Text("Commit: %s\tDate: %s", revision->commit, revision->date);
-    ImGui::Text("Author: %s <%s>", revision->author, revision->email);
-    ImGui::Text("Body: %s", revision->body);
-
-    ImGui::End();
 
     // the sokol_gfx draw pass
     sg_pass_action pass_action = {};

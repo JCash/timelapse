@@ -15,7 +15,11 @@ This software is supplied "AS IS" without any warranties and support
 ## Usage
 
 * Settings are stored at `~/.timelapse`
+* Set your custom fonts like so:
 
+    [fonts]
+    regular=/path/to/font/FontName-Medium.ttf
+    bold=/path/to/font/FontName-Bold.ttf
 
 ## Credits
 

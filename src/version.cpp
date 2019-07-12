@@ -58,9 +58,12 @@ static char* parse_chunk_header(Chunk* chunk, const char* header) {
 static void parse_chunks(Revision* revision, const char* sectionstart, const char* sectionend) {
     revision->num_chunks = 0;
     revision->chunks = 0;
+    revision->chunk_begin = sectionstart;
+    revision->chunk_end = sectionend;
 
     char* chunkstart = (char*)strstr(sectionstart, "@@"); // @@ -26,7 +26,12 @@ void function_name() {
     assert(chunkstart);
+    *(chunkstart-1) = 0; // terminate this chunk
     while (chunkstart < sectionend) {
 
         // allocate chunk
@@ -74,7 +77,6 @@ static void parse_chunks(Revision* revision, const char* sectionstart, const cha
 
         //printf("MATCH: CHUNK:  -%d,%d +%d,%d\n", chunk->before.start, chunk->before.end, chunk->after.start, chunk->after.end);
 
-        // Parse the chunk body
         chunk->body = chunkstart;
 
         // Find the next chunk from our command (or 0 if it was the last chunk)
@@ -194,6 +196,9 @@ RevisionCtx* get_revisions(const char* path) {
             parse_chunks(revision, match, chunks_end);
         }
     }
+
+#undef CONSUME_LINE
+#undef CONSUME_SEGMENT
 
     return ctx;
 }

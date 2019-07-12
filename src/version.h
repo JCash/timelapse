@@ -16,6 +16,8 @@ struct Revision {
     const char* author;
     const char* email;
     const char* body;
+    const char* chunk_begin; // contains '\0'
+    const char* chunk_end;
     Chunk* chunks;
     int num_chunks;
 };
