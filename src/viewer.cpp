@@ -39,6 +39,7 @@ struct Context {
     ImFont* font_bold;
     sg_image font_atlas;
     int input_command;
+    int font_changed;
 } g_Context;
 
 
@@ -66,6 +67,7 @@ static void update_font_texture() {
 }
 
 static void load_fonts() {
+    g_Context.font_changed = 0;
 
     ImGuiIO& io = ImGui::GetIO();
     ImFontConfig font_cfg;
@@ -92,6 +94,53 @@ static void load_fonts() {
 
     update_font_texture();
 }
+
+static void reload_fonts() {
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+    g_Context.font_regular = 0;
+    g_Context.font_bold = 0;
+    load_fonts();
+}
+
+static void imgui_show_settings() {
+    ImGui::BeginGroup();
+        g_Context.font_changed = 0;
+        ImGui::Text("Fonts");
+        g_Context.font_changed |= ImGui::SliderFloat("Size", &g_Context.settings.fontsize, 0.1f, 64.0f, "%.2f");
+        g_Context.font_changed |= ImGui::SliderFloat("Weight", &g_Context.settings.fontweight, 0.1f, 3.0f, "%.2f");
+
+        // char buffer[2048];
+        // buffer[0] = 0;
+        // if (g_Context.settings.fontpath_regular)
+        //     snprintf(buffer, sizeof(buffer), "%s", g_Context.settings.fontpath_regular);
+        // int font_regular_changed = ImGui::InputText("Font Regular", buffer, sizeof(buffer));
+        // g_Context.font_changed |= font_regular_changed;
+        // if (font_regular_changed) {
+        //     if (g_Context.settings.fontpath_regular) {
+        //         free((void*)g_Context.settings.fontpath_regular);
+        //         g_Context.settings.fontpath_regular = 0;
+        //     }
+        //     if (buffer[0] != 0)
+        //         g_Context.settings.fontpath_regular = strdup(buffer);
+        // }
+
+        // buffer[0] = 0;
+        // if (g_Context.settings.fontpath_bold)
+        //     snprintf(buffer, sizeof(buffer), "%s", g_Context.settings.fontpath_bold);
+        // int font_bold_changed = ImGui::InputText("Font Bold", buffer, sizeof(buffer));
+        // g_Context.font_changed |= font_bold_changed;
+        // if (font_bold_changed) {
+        //     if (g_Context.settings.fontpath_bold) {
+        //         free((void*)g_Context.settings.fontpath_bold);
+        //         g_Context.settings.fontpath_bold = 0;
+        //     }
+        //     if (buffer[0] != 0)
+        //         g_Context.settings.fontpath_bold = strdup(buffer);
+        // }
+    ImGui::EndGroup();
+}
+
 
 static void on_app_init(void) {
     sg_desc desc = { };
@@ -352,6 +401,14 @@ static void imgui_show_revision(int w, int h) {
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }
+            if (ImGui::BeginTabItem("Settings"))
+            {
+                ImGui::BeginChild("SettingsView");
+                    imgui_show_settings();
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+
             ImGui::EndTabBar();
         }
 
@@ -366,13 +423,17 @@ static void imgui_show_revision(int w, int h) {
     ImGui::End();
 }
 
-
 static void on_app_frame(void) {
     int appw = sapp_width();
     int apph = sapp_height();
 
     static uint64_t last_time = 0;
     double dt = stm_sec(stm_laptime(&last_time));
+
+    if (g_Context.font_changed) {
+        reload_fonts();
+        g_Context.font_changed = 0;
+    }
 
     float dpi = sapp_dpi_scale();
     simgui_new_frame(appw, apph, dt);
