@@ -13,7 +13,7 @@
 #define SOKOL_IMPL
 #define SOKOL_IMGUI_IMPL
 
-#include "sokol_app.h"
-#include "sokol_gfx.h"
-#include "util/sokol_imgui.h"
-#include "sokol_time.h"
+#include <sokol/sokol_app.h>
+#include <sokol/sokol_gfx.h>
+#include <sokol/util/sokol_imgui.h>
+#include <sokol/sokol_time.h>

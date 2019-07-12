@@ -1,13 +1,7 @@
-
-#if defined(__APPLE__)
-    #define SOKOL_METAL
-#elif defined(WIN32)
-    #define SOKOL_D3D11
-#elif defined(__EMSCRIPTEN__)
-    #define SOKOL_GLES2
-#else
-    #error "No GFX Backend Specified"
-#endif
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 #include <sokol/sokol_app.h>
 #include <sokol/sokol_gfx.h>
@@ -15,40 +9,14 @@
 #include <sokol/util/sokol_imgui.h>
 
 #include <imgui/imgui.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <time.h>
 
-#include <magu/ini.h>
-
-#include "misc.h"
 #include "version.h"
+#include "settings.h"
 #include "font_source_code_pro_medium.h"
 #include "font_source_code_pro_bold.h"
 
 extern void imgui_set_style_photoshop();
 extern void imgui_set_style_lightgreen();
-
-uint64_t last_time = 0;
-
-typedef struct {
-    float mvp[16];
-} vs_params_t;
-
-
-float rx = 0.0f;
-float ry = 0.0f;
-int update_count = 0;
-
-extern const char *vs_src, *fs_src;
-
-struct Settings {
-    int width;
-    int height;
-    //const char* fontpath;
-    int fontsize;
-};
 
 struct FileContext {
     RevisionCtx* ctx;
@@ -68,50 +36,56 @@ struct Context {
 } g_Context;
 
 
-static void settings_init(Settings* s) {
-    s->width = 800;
-    s->height = 600;
-    s->fontsize = 16;
-}
 
-static void settings_read(const char* path, Settings* s) {
-    int size;
-    void* data = read_file(path, &size);
-    if (!data)
-        return;
+
+static void update_font_texture() {
+    ImGuiIO& io = ImGui::GetIO();
+
+    unsigned char* font_pixels;
+    int font_width, font_height;
+    io.Fonts->GetTexDataAsRGBA32(&font_pixels, &font_width, &font_height);
+    sg_image_desc img_desc = { };
+    img_desc.width = font_width;
+    img_desc.height = font_height;
+    img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    img_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    img_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    img_desc.min_filter = SG_FILTER_LINEAR;
+    img_desc.mag_filter = SG_FILTER_LINEAR;
+    img_desc.content.subimage[0][0].ptr = font_pixels;
+    img_desc.content.subimage[0][0].size = font_width * font_height * sizeof(uint32_t);
+    img_desc.label = "sokol-imgui-font";
+    sg_destroy_image(g_Context.font_atlas);
+    g_Context.font_atlas = sg_make_image(&img_desc);
+    io.Fonts->SetTexID((ImTextureID)(uintptr_t) g_Context.font_atlas.id);
 }
 
 static void load_fonts() {
 
     ImGuiIO& io = ImGui::GetIO();
     ImFontConfig font_cfg;
-    font_cfg.FontDataOwnedByAtlas = false;
+    font_cfg.RasterizerMultiply = g_Context.settings.fontweight;
 
-    //g_Context.font_regular = io.Fonts->AddFontFromMemoryTTF((void*)VICTORMONO_REGULAR_TTF_DATA, VICTORMONO_REGULAR_TTF_LEN, (float)g_Context.settings.fontsize, &font_cfg);
-    //g_Context.font_regular = io.Fonts->AddFontFromMemoryTTF((void*)SOURCECODEPRO_REGULAR_TTF_DATA, SOURCECODEPRO_REGULAR_TTF_LEN, (float)g_Context.settings.fontsize, &font_cfg);
-    g_Context.font_regular = io.Fonts->AddFontFromMemoryTTF((void*)SOURCECODEPRO_MEDIUM_TTF_DATA, SOURCECODEPRO_MEDIUM_TTF_LEN, (float)g_Context.settings.fontsize, &font_cfg);
-    g_Context.font_bold = io.Fonts->AddFontFromMemoryTTF((void*)SOURCECODEPRO_BOLD_TTF_DATA, SOURCECODEPRO_BOLD_TTF_LEN, (float)g_Context.settings.fontsize, &font_cfg);
-
-    io.Fonts->Build();
-
-    {
-        unsigned char* font_pixels;
-        int font_width, font_height;
-        io.Fonts->GetTexDataAsRGBA32(&font_pixels, &font_width, &font_height);
-        sg_image_desc img_desc = { };
-        img_desc.width = font_width;
-        img_desc.height = font_height;
-        img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-        img_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-        img_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-        img_desc.min_filter = SG_FILTER_LINEAR;
-        img_desc.mag_filter = SG_FILTER_LINEAR;
-        img_desc.content.subimage[0][0].ptr = font_pixels;
-        img_desc.content.subimage[0][0].size = font_width * font_height * sizeof(uint32_t);
-        img_desc.label = "sokol-imgui-font";
-        g_Context.font_atlas = sg_make_image(&img_desc);
-        io.Fonts->SetTexID((ImTextureID)(uintptr_t) g_Context.font_atlas.id);
+    if (g_Context.settings.fontpath_regular != 0) {
+        font_cfg.FontDataOwnedByAtlas = true;
+        g_Context.font_regular = io.Fonts->AddFontFromFileTTF(g_Context.settings.fontpath_regular, g_Context.settings.fontsize, &font_cfg);
     }
+    if (!g_Context.font_regular) {
+        font_cfg.FontDataOwnedByAtlas = false;
+        g_Context.font_regular = io.Fonts->AddFontFromMemoryTTF((void*)SOURCECODEPRO_MEDIUM_TTF_DATA, SOURCECODEPRO_MEDIUM_TTF_LEN, g_Context.settings.fontsize, &font_cfg);
+    }
+
+    if (g_Context.settings.fontpath_bold != 0) {
+        font_cfg.FontDataOwnedByAtlas = true;
+        g_Context.font_bold = io.Fonts->AddFontFromFileTTF(g_Context.settings.fontpath_bold, g_Context.settings.fontsize, &font_cfg);
+    }
+
+    if (!g_Context.font_bold) {
+        font_cfg.FontDataOwnedByAtlas = false;
+        g_Context.font_bold = io.Fonts->AddFontFromMemoryTTF((void*)SOURCECODEPRO_BOLD_TTF_DATA, SOURCECODEPRO_BOLD_TTF_LEN, g_Context.settings.fontsize, &font_cfg);
+    }
+
+    update_font_texture();
 }
 
 static void on_app_init(void) {
@@ -144,6 +118,8 @@ static void on_app_init(void) {
 static void on_app_frame(void) {
     int appw = sapp_width();
     int apph = sapp_height();
+
+    static uint64_t last_time = 0;
     double dt = stm_sec(stm_laptime(&last_time));
 
     float dpi = sapp_dpi_scale();
@@ -259,10 +235,16 @@ static void on_app_frame(void) {
             }
 
             int highlight = 0;
-            if (strcmp(revision->commit, line_revision)==0)
+            if (strcmp(revision->commit, line_revision)==0) {
                 highlight = 1;
+                ImGui::PushFont(g_Context.font_bold);
+            }
 
             ImGui::TextColored(colors[highlight], "%s", buffer);
+
+            if (highlight) {
+                ImGui::PopFont();
+            }
         }
 
         ImGui::EndGroup();
@@ -295,15 +277,12 @@ static void on_app_frame(void) {
 }
 
 static void on_app_cleanup(void) {
+    char buffer[4096];
+    settings_write(get_settings_path(buffer, sizeof(buffer)), &g_Context.settings);
+    settings_destroy(&g_Context.settings);
     simgui_shutdown();
     sg_shutdown();
 }
-
-static void log_msg(const char* msg) {
-    printf("%s\n", msg);
-    fflush(stdout);
-}
-
 
 static void on_app_event(const sapp_event* event) {
     if (simgui_handle_event(event)) {
@@ -337,8 +316,9 @@ static void load_file(const char* path) {
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {
-
+    char buffer[4096];
     settings_init(&g_Context.settings);
+    settings_read(get_settings_path(buffer, sizeof(buffer)), &g_Context.settings);
 
     sapp_desc desc = {};
     desc.init_cb = on_app_init;

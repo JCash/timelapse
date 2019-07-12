@@ -39,3 +39,5 @@ docs/_site/**
 *.exe
 *.out
 *.app
+
+a.out*

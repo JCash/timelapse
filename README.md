@@ -11,6 +11,12 @@ This software is supplied "AS IS" without any warranties and support
 
 [The MIT license](http://choosealicense.com/licenses/mit/)
 
+
+## Usage
+
+* Settings are stored at `~/.timelapse`
+
+
 ## Credits
 
 ### Libraries
